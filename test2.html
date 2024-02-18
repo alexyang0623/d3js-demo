@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>D3.js Grouped Node Layout</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+  </head>
+  <body>
+    <svg id="graph" style="width: 1800px; height: 1800px"></svg>
+
+    <script>
+      var nodes = [
+        { id: 1, group: 1, order: 1 },
+        { id: 2, group: 1, order: 2 },
+        { id: 3, group: 1, order: 3 },
+        { id: 4, group: 2, order: 1 },
+        { id: 5, group: 2, order: 2 },
+        { id: 6, group: 3, order: 1 },
+        { id: 7, group: 3, order: 2 },
+        { id: 8, group: 3, order: 3 },
+        { id: 9, group: 3, order: 4 },
+        // Add more nodes as needed...
+      ];
+
+      var edges = [
+        { source: 1, target: 4 },
+        { source: 2, target: 5 },
+        { source: 2, target: 6 },
+        { source: 1, target: 7 },
+        { source: 2, target: 9 },
+        { source: 4, target: 7 },
+        { source: 6, target: 8 },
+        // Add more edges as needed...
+      ];
+
+      var xGap = 100; // Gap between nodes horizontally
+      var yPosition = 100; // Fixed y-coordinate for all nodes
+
+      nodes.sort(function (a, b) {
+        if (a.group === b.group) {
+          return a.order - b.order;
+        } else {
+          return a.group - b.group;
+        }
+      });
+
+      nodes.forEach(function (node, index) {
+        var xPosition = node.group * xGap + node.order * xGap;
+
+        node.x = xPosition;
+        node.y = yPosition * node.group;
+      });
+
+      var svg = d3.select("#graph");
+
+      svg
+        .append("defs")
+        .append("marker")
+        .attr("id", "arrowhead")
+        .attr("viewBox", "-5 -5 10 10")
+        .attr("refX", 10)
+        .attr("refY", 0)
+        .attr("markerWidth", 5)
+        .attr("markerHeight", 5)
+        .attr("orient", "auto")
+        .append("path")
+        .attr("d", "M 0,0 m -5,-5 L 5,0 L -5,5 Z")
+        .style("fill", "gray");
+
+      var edgeSelection = svg
+        .selectAll("line")
+        .data(edges)
+        .enter()
+        .append("line")
+        .attr("x1", function (d) {
+          var sourceNode = nodes.find(function (node) {
+            return node.id === d.source;
+          });
+          return sourceNode.x;
+        })
+        .attr("y1", function (d) {
+          var sourceNode = nodes.find(function (node) {
+            return node.id === d.source;
+          });
+          return sourceNode.y;
+        })
+        .attr("x2", function (d) {
+          var targetNode = nodes.find(function (node) {
+            return node.id === d.target;
+          });
+          return targetNode.x;
+        })
+        .attr("y2", function (d) {
+          var targetNode = nodes.find(function (node) {
+            return node.id === d.target;
+          });
+          return targetNode.y;
+        })
+        .attr("marker-end", "url(#arrowhead)")
+        .style("stroke", "gray")
+        .classed("selected", false)
+        .style("stroke-width", 2);
+
+      var nodeSelection = svg
+        .selectAll("circle")
+        .data(nodes)
+        .enter()
+        .append("circle")
+        .attr("cx", function (d) {
+          return d.x;
+        })
+        .attr("cy", function (d) {
+          return d.y;
+        })
+        .attr("r", 10)
+        .style("fill", "steelblue")
+        // .on("click", selectNode)
+        .on("click", function (e, d) {
+          nodes.forEach(function (node) {
+            node.selected = false;
+          });
+
+          nodeSelection.style("fill", "steelblue");
+          edgeSelection.classed("selected", false).style("stroke", "grey");
+
+          // Toggle the selected state of the clicked node
+          d.selected = !d.selected;
+
+          // Perform a graph traversal to mark reachable nodes and edges as red
+          var reachableNodes = [];
+          var reachableEdges = [];
+
+          function traverse(node) {
+            // Mark the current node as reachable
+            reachableNodes.push(node);
+
+            // Find edges connected to the current node
+            var connectedEdges = edges.filter(function (edge) {
+              // return edge.source === node.id || edge.target === node.id;
+              return edge.source === node.id;
+            });
+
+            // Mark the connected edges as reachable
+            connectedEdges.forEach(function (edge) {
+              reachableEdges.push(edge);
+            });
+
+            // Recursively traverse the neighboring nodes
+            connectedEdges.forEach(function (edge) {
+              var neighborId =
+                edge.source === node.id ? edge.target : edge.source;
+              var neighborNode = nodes.find(function (n) {
+                return n.id === neighborId;
+              });
+
+              // If the neighboring node is not already marked as reachable, traverse it
+              if (!reachableNodes.includes(neighborNode)) {
+                traverse(neighborNode);
+              }
+            });
+          }
+
+          // Start the graph traversal from the clicked node
+          traverse(d);
+
+          // Update the class of the corresponding edges
+          // Update the class and stroke color of the corresponding edges
+          nodeSelection
+            .filter(function (node) {
+              return reachableNodes.includes(node);
+            })
+            .style("fill", function (node) {
+              console.log("selected?", d.selected);
+              return d.selected ? "red" : "steelblue";
+            });
+
+          edgeSelection
+            .filter(function (edge) {
+              console.log("filtering edge:", edge, d);
+              return reachableEdges.includes(edge);
+            })
+            .classed("selected", d.selected)
+            .style("stroke", function (edge) {
+              console.log("change stroke of edge", edge);
+              // return edge.source === d.id && d.selected ? "red" : "gray";
+              return d.selected ? "red" : "grey";
+            });
+        });
+
+      var textSelection = svg
+        .selectAll("text")
+        .data(nodes)
+        .enter()
+        .append("text")
+        .text(function (node) {
+          return node.id;
+        })
+        .attr("font-size", 15)
+        .attr("text-anchor", "middle")
+        .attr("dy", "0.35em")
+        .attr("x", function (node) {
+          return node.x;
+        })
+        .attr("y", function (node) {
+          return node.y;
+        });
+
+      function getNeighbors(node) {
+        return edges.reduce(
+          function (neighbors, link) {
+            if (link.target === node.id) {
+              neighbors.push(link.source);
+            } else if (link.source === node.id) {
+              neighbors.push(link.target);
+            }
+            return neighbors;
+          },
+          [node.id]
+        );
+      }
+
+      function selectNode(event, selectedNode) {
+        var neighbors = getNeighbors(selectedNode);
+
+        // we modify the styles to highlight selected nodes
+        nodeSelection.style("fill", function (node) {
+          return getNodeColor(node, neighbors);
+        });
+
+        // textElements.attr("fill", function (node) {
+        //   return getTextColor(node, neighbors);
+        // });
+
+        edgeSelection.attr("stroke", function (link) {
+          return getLinkColor(selectedNode, link);
+        });
+      }
+
+      function getNodeColor(node, neighbors) {
+        return "red";
+        // if (Array.isArray(neighbors) && neighbors.indexOf(node.id) > -1) {
+        //   return node.level === 1 ? "blue" : "green";
+        // }
+
+        // return node.level === 1 ? "red" : "gray";
+      }
+
+      function getLinkColor(node, link) {
+        return isNeighborLink(node, link) ? "green" : "#E5E5E5";
+      }
+
+      function getTextColor(node, neighbors) {
+        return Array.isArray(neighbors) && neighbors.indexOf(node.id) > -1
+          ? "green"
+          : "black";
+      }
+
+      function isNeighborLink(node, link) {
+        return link.target.id === node.id || link.source.id === node.id;
+      }
+    </script>
+  </body>
+</html>
